@@ -11,3 +11,4 @@ strip = true
 lto = true
 
 [dependencies]
+native-dialog = "0.7.0"

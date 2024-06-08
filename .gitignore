@@ -17,3 +17,13 @@ Cargo.lock
 # Added by cargo
 
 /target
+
+# Electron rcedit binary
+rcedit-x64.exe
+
+# Extractor output file
+output.txt
+
+# Other
+*.exe
+FastLogExtractor
