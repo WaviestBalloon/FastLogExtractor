@@ -1,7 +1,7 @@
 use std::{char, fs::File, io::{self, Read}, path::PathBuf}; // Todo, multithreading
 
 #[derive(Debug)]
-pub struct FastLog { // could possibly add more info about the log here, e.g. if it has 
+pub struct FastLog { // could possibly add more info about the log here, e.g. if it has `%s`
 	pub value: String,
 }
 #[derive(Debug)]
@@ -15,9 +15,12 @@ fn calculate_percentage(current: f64, total: f64) -> f64 {
 }
 
 fn find_terminator_position(ascii: Vec<char>, current_index: usize) -> i32 {
-	for (index, char) in ascii[current_index..ascii.len()].iter().collect::<String>().chars().enumerate() {
-		#[cfg(debug_assertions)] println!("Shifting to find terminator, current index at {}, char is {} (0x{})", index, char, char as u8);
-		if char as u8 == 0x0 { // is_ascii_control failed me
+	#[cfg(debug_assertions)] let start_timer = std::time::Instant::now();
+
+	for (index, char) in ascii[current_index..ascii.len()].iter().enumerate() {
+		#[cfg(debug_assertions)] println!("Shifting to find terminator, current index at {}, char is {} (0x{})", index, char, *char as u8);
+		if *char as u8 == 0x0 { // is_ascii_control failed me
+			#[cfg(debug_assertions)] println!("Took {:?} to find terminator", start_timer.elapsed());
 			return (current_index + index) as i32;
 		}
 	}
