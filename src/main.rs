@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf, process, time};
+use std::{env, fs, path::PathBuf, process};
 mod utils;
 use utils::{fileprompt, extractor};
 
@@ -37,11 +37,9 @@ fn main() {
 	}
 
 	println!("Reading executable: {:?}", fileunwrapped);
-	let start_timer = time::Instant::now();
-	let flogs = extractor::inspect_executable(fileunwrapped);
+	let flogs: extractor::FastLogs = extractor::inspect_executable(fileunwrapped);
 
-	let end_time = start_timer.elapsed();
-	println!("Took: {:?}\nFLogs found: {}\nDFLogs found: {}", end_time, flogs.flogs.len(), flogs.dflogs.len());
+	println!("Took: {:?}\nBytes read: {}\nFLogs found: {}\nDFLogs found: {}", flogs.extraction_details.time_taken, flogs.extraction_details.bytes_read, flogs.flogs.len(), flogs.dflogs.len());
 
 	println!("\nWriting results to output.txt...");
 	let mut stringflogs = String::new();
@@ -53,10 +51,10 @@ fn main() {
 		stringdflogs = format!("{}\n{}", stringdflogs, dflog.value);
 	}
 
-	fs::write("output.txt", format!("--- INFO START ---\nFLogs found: {}\nDFLogs found: {}\nTime taken: {:?}\n--- INFO END ---\n--- FLOGS START ---{}\n--- FLOGS END ---\n--- DFLOGS START ---{}\n--- DFLOGS END ---",
+	fs::write("output.txt", format!("--- INFO START ---\nFLogs found: {}\nDFLogs found: {}\nTime taken: {:?}secs\n--- INFO END ---\n--- FLOGS START ---{}\n--- FLOGS END ---\n--- DFLOGS START ---{}\n--- DFLOGS END ---",
 		flogs.flogs.len(),
 		flogs.dflogs.len(),
-		end_time,
+		flogs.extraction_details.time_taken.as_secs(),
 		stringflogs,
 		stringdflogs
 	)).unwrap();
