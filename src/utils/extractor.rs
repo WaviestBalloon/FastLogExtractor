@@ -1,83 +1,88 @@
-use std::{char, fs::File, io::{self, Read}, path::PathBuf}; // Todo, multithreading
+use std::{char, fs::{self, File}, io::{self, BufRead}, path::PathBuf, time};
 
 #[derive(Debug)]
 pub struct FastLog { // could possibly add more info about the log here, e.g. if it has `%s`
 	pub value: String,
 }
 #[derive(Debug)]
+pub struct ExtractionDetails {
+	pub bytes_read: usize,
+	pub bytes_in_file: usize,
+	pub time_taken: time::Duration,
+}
+#[derive(Debug)]
 pub struct FastLogs {
 	pub flogs: Vec<FastLog>,
 	pub dflogs: Vec<FastLog>,
+	pub extraction_details: ExtractionDetails,
 }
 
 fn calculate_percentage(current: f64, total: f64) -> f64 {
 	((current / total) * 100.0).round()
 }
 
-fn find_terminator_position(ascii: Vec<char>, current_index: usize) -> i32 {
-	#[cfg(debug_assertions)] let start_timer = std::time::Instant::now();
+fn convert_bytes_to_ascii(bytes: Vec<u8>) -> String {
+	let mut ascii = String::new();
 
-	for (index, char) in ascii[current_index..ascii.len()].iter().enumerate() {
-		#[cfg(debug_assertions)] println!("Shifting to find terminator, current index at {}, char is {} (0x{})", index, char, *char as u8);
-		if *char as u8 == 0x0 { // is_ascii_control failed me
-			#[cfg(debug_assertions)] println!("Took {:?} to find terminator", start_timer.elapsed());
-			return (current_index + index) as i32;
+	for byte in bytes.iter() {
+		let character = *byte as char;
+
+		if character.is_ascii_alphanumeric() || character.is_ascii_punctuation() || character.is_ascii_whitespace() || character.is_ascii_control() {
+			ascii.push(character);
 		}
 	}
 
-	0
+	ascii
 }
 
 pub fn inspect_executable(executable_path: PathBuf) -> FastLogs {
-	let file = File::open(&executable_path).unwrap();
+	let file = File::open(executable_path.clone()).unwrap();
+	let bytes_in_file = fs::metadata(executable_path).unwrap().len();
 	let mut reader = io::BufReader::new(file);
 
-	let mut buffer = Vec::new();
-	reader.read_to_end(&mut buffer).unwrap();
-
-	println!("Parsing bytes...");
-
-	let mut ascii: Vec<char> = Vec::new();
-	for byte in buffer.iter() {
-		let character = *byte as char;
-
-		if character.is_ascii_alphanumeric() || character.is_ascii_punctuation() || character.is_ascii_whitespace() {
-			ascii.push(character);
-		} else if character.is_ascii_control() { // For endings
-			ascii.push(character);
-		}
-	}
-
 	println!("Processing bytes to find FastLogs...");
-
+	let start_timer = time::Instant::now();
 	let mut flogs = Vec::new();
 	let mut dflogs = Vec::new();
 
-	for i in 0..ascii.len() - 7 { // miss out 7 bytes at the end since we don't want to go out of range and we don't want to constantly check if we are going out of range
-		if ascii[i..i + 7].iter().collect::<String>() == "[FLog::" {
-			println!("Found FLog starting at byte: {} ({}% read)", i, calculate_percentage(i as f64, ascii.len() as f64));
-			let shift_to = find_terminator_position(ascii.clone(), i);
+	let mut bytes_processing_buffer: Vec<u8> = Vec::new();
+	let mut bytes_read = 0;
+	loop {
+		reader.read_until(0x0, &mut bytes_processing_buffer).unwrap();
 
-			flogs.push(FastLog {
-				value: ascii[i..shift_to as usize].iter().collect::<String>(),
-			});
-			continue;
+		let bytes_to_ascii = convert_bytes_to_ascii(bytes_processing_buffer.clone());
+		if bytes_to_ascii.len() > 0 {
+			let current_byte_position = bytes_read + 1;
+
+			if bytes_to_ascii.split("[FLog").count() > 1 {
+				println!("Found FLog starting at byte: {} ({}% read)", current_byte_position, calculate_percentage(current_byte_position as f64, bytes_in_file as f64));
+				flogs.push(FastLog {
+					value: bytes_to_ascii,
+				});
+			} else if bytes_to_ascii.split("[DFLog").count() > 1 {
+				println!("Found DFLog starting at byte: {} ({}% read)", current_byte_position, calculate_percentage(current_byte_position as f64, bytes_in_file as f64));
+				dflogs.push(FastLog {
+					value: bytes_to_ascii,
+				});
+			}
 		}
-		if ascii[i..i + 8].iter().collect::<String>() == "[DFLog::" {
-			println!("Found DFLog starting at byte: {} ({}% read)", i, calculate_percentage(i as f64, ascii.len() as f64));
-			let shift_to = find_terminator_position(ascii.clone(), i);
 
-			dflogs.push(FastLog {
-				value: ascii[i..shift_to as usize].iter().collect::<String>(),
-			});
-			continue;
+		#[cfg(debug_assertions)] println!("{} bytes of {} bytes ({}% read)", bytes_read, bytes_in_file, calculate_percentage(bytes_read as f64, bytes_in_file as f64));
+
+		bytes_read += bytes_processing_buffer.len();
+		bytes_processing_buffer = Vec::new();
+		if bytes_read >= bytes_in_file as usize {
+			break;
 		}
 	}
 
-	println!("Bytes processed: {}", ascii.len());
-	
 	FastLogs {
 		flogs,
 		dflogs,
+		extraction_details: ExtractionDetails {
+			bytes_read,
+			bytes_in_file: bytes_in_file as usize,
+			time_taken: start_timer.elapsed(),
+		},
 	}
 }
